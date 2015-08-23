@@ -1,0 +1,27 @@
+<header>
+    <div class="text-center"><img ng-src="{{user.picture.data.url}}" class="img-thumbnail"></div>
+    <h3 class="text-center">Hola {{user.name}}!</h3>
+</header>
+<section id="loading" ng-if="!accounts">
+    <div class="text-center center-block">
+        <label class="">Cargando...</label>
+    </div>
+</section>
+<section id="accounts" ng-if="accounts">
+    <h4 class="text-center">Seleccione una de sus páginas para empezar a vizualizar el panel de posts</h4>
+    <div class="center-block text-center">
+        <label href="" ng-repeat="item in accounts" class="btn btn-facebook">
+            <img ng-src="{{item.picture}}" class="img-rounded" />
+            <input type="radio" ng-model="$parent.options.selectedAccount" ng-value="item" class="">
+           {{item.name}}
+        </label>
+    </div>
+</section>
+<footer id="commands">
+    <nav class="navbar navbar-default navbar-fixed-bottom">
+        <div class="container">
+            <button class="btn btn-github navbar-btn navbar-right" ng-click="logout()">Salir</button>
+            <button class="btn btn-facebook navbar-btn navbar-right" ng-click="initialize()" ng-disabled="!options.selectedAccount">Empezar</button>
+        </div>
+    </nav>
+</footer>

@@ -1,0 +1,45 @@
+<style type="text/css">
+    body {
+        overflow:hidden;
+        background-image: url('css/img/ring_bg.jpg');
+        background-size: cover;
+    }
+</style>
+<nav class="navbar navbar-fixed-top navbar-default menu-bar menu-bar-hidden">
+    <div class="container-fluid">
+        <ul class="nav navbar-nav navbar-right">
+            <li><p class="navbar-text">Última actualización: {{lastRefresh}}</p></li>
+            <li>
+                <div class="btn-group">
+                    <button class="btn navbar-btn btn-facebook" ng-click="options()">
+                        <span class="glyphicon glyphicon glyphicon-cog" aria-hidden="true"></span>
+                    </button>
+                    <button class="btn navbar-btn btn-facebook" ng-click="fullScreen()">
+                        <span class="glyphicon" ng-class="{'glyphicon-resize-full' : fullScreenMode === false, 'glyphicon-resize-small' : fullScreenMode === true}" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </li>
+            <li class="dropdown">
+                <img ng-src="{{user.picture.data.url}}" class="img-thumbnail img-menu" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false" />
+                <ul class="dropdown-menu">
+                    <li><a  ng-click="logout()" href="#">Salir</a></li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+</nav>
+<i ng-click="menu()" class="menu-icon glyphicon glyphicon-menu-hamburger"></i>
+<section id="board">
+    <div id="zoomwall" class="zoomwall">
+        <img ng-repeat="image in displayImages" id="{{image.id}}" ng-src="{{image.url}}" data-highres="{{image.url}}" />
+    </div>
+</section>
+<div id="message" class="speech-container animated">
+    <div class="avatar-container">
+        <img ng-show="currentAvatar" ng-src="{{currentAvatar}}" class="img-thumbnail avatar" />
+    </div>
+    <div class="message-container">
+        <p class="user" ng-class="{'icon-facebook': icon==='facebook', 'icon-twitter': icon==='twitter'}">{{currentUser}}</p>
+        <p class="message">{{currentMessage}}</p>
+    </div>
+</div>
