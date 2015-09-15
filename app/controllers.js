@@ -8,8 +8,8 @@ fancySocialDeckApp
 
             OpenFB.login('email,manage_pages').then(
                 function () {
-                    //OpenFB.get('/oauth/access_token',{grant_type: 'fb_exchange_token',client_id:'1581349792132388',client_secret:'e7924995670b44fbb157556b86765963',fb_exchange_token:sessionStorage.getItem('fbtoken')})
-                    OpenFB.get('/oauth/access_token',{grant_type: 'fb_exchange_token',client_id:'866144803475098',client_secret:'cf38f0e41a0e4c4f160426e1788a139f',fb_exchange_token:sessionStorage.getItem('fbtoken')})
+                    OpenFB.get('/oauth/access_token',{grant_type: 'fb_exchange_token',client_id:'1581349792132388',client_secret:'e7924995670b44fbb157556b86765963',fb_exchange_token:sessionStorage.getItem('fbtoken')})
+                    //OpenFB.get('/oauth/access_token',{grant_type: 'fb_exchange_token',client_id:'866144803475098',client_secret:'cf38f0e41a0e4c4f160426e1788a139f',fb_exchange_token:sessionStorage.getItem('fbtoken')})
                         .success(function(data) {
                             var regex = /access_token=(.*?)(&|$)/;
                             var newToken = regex.exec(data)[1];
@@ -210,7 +210,12 @@ fancySocialDeckApp
         }
 
         function displayANewMessage(){
+            if($scope.nextAction === 'shrink' && new Date() - $scope.lastExpand < 10000) {
+                return;
+            }
+
             if($scope.nextAction === 'expand') {
+                $scope.lastExpand = new Date();
                 var nextFeed = getNonDisplayedFeed();
 
                 if(!nextFeed) {
