@@ -79,6 +79,7 @@ fancySocialDeckApp
     })
 
     .controller('DeckCtrl', function ($scope, $state, $window, $filter, $interval, OpenFB) {
+        const delay = 2000;
         OpenFB.get('/me', {fields: 'id,email,name,picture'})
             .success(function(data, status){
                 $scope.user = data;
@@ -97,48 +98,78 @@ fancySocialDeckApp
 
         $scope.feeds = [];
 
+        function addNewFeed(feed) {
+            var newItem = {
+                id: 'img_' + feed['id'],
+                object_id: feed['object_id'],
+                name: feed['from']['name'],
+                message: feed['message'],
+                icon: 'facebook',
+                displayed: false,
+                ready: false
+            };
+
+            var fromPicture = 'http://graph.facebook.com/{from-id}/picture?height=1500&width=1500'.replace('{from-id}', feed['from']['id']);
+            var fullPicture = feed['full_picture'];
+
+            if (fullPicture) {
+                newItem.picture = fullPicture;
+                newItem.avatar = fromPicture;
+            } else {
+                newItem.picture = fromPicture;
+            }
+
+            var createdTime = new Date(feed['created_time']);
+            var dateToDisplay = "";
+            if (createdTime.toDateString() == new Date().toDateString()) {
+                dateToDisplay = formatDateNumber(createdTime.getHours()) + ':' + formatDateNumber(createdTime.getMinutes()) + ' hs.';
+            } else {
+                dateToDisplay = formatDateNumber(createdTime.getDay()) + '/' + formatDateNumber(createdTime.getMonth()) + '/' + createdTime.getYear();
+            }
+            newItem.date = dateToDisplay;
+
+            $scope.feeds.push(newItem);
+        }
+
+        function getFeedPictures(i){
+            if($scope.feeds[i]['object_id']){
+                OpenFB.get('/{object-id}'.replace('{object-id}', $scope.feeds[i]['object_id']), {access_token: $scope.currentAccount.accessToken})
+                    .success(function(data, status,headers){
+
+                        console.log(JSON.stringify(data['images'][0]));
+
+                        $scope.feeds[i]['picture'] = data['images'][0]['source'];
+
+                        var picture = new Image();
+                        picture.src = $scope.feeds[i]['picture'];
+                        picture.onload = function(){
+                            $scope.feeds[i].ready = true;
+                        };
+                    });
+            } else {
+                console.log($scope.feeds[i]['picture']);
+                var picture = new Image();
+                picture.src = $scope.feeds[i]['picture'];
+                picture.onload = function(){
+                    $scope.feeds[i].ready = true;
+                };
+            }
+        }
+
         function loadFacebookFeeds(callback) {
-            OpenFB.get('/{account-id}/feed'.replace('{account-id}', $scope.currentAccount.id), {access_token: $scope.currentAccount.accessToken, fields: 'full_picture,message,from,created_time'})
+            OpenFB.get('/{account-id}/feed'.replace('{account-id}', $scope.currentAccount.id), {access_token: $scope.currentAccount.accessToken, fields: 'object_id,full_picture,message,from,created_time'})
                 .success(function (data, status, headers) {
                     var feeds = $filter('orderBy')(data.data, "created_time", false);
 
                     for (var i = 0; i < feeds.length; i++) {
                         var found = $filter('filter')($scope.feeds, (function(item){
-                            if(item.id == 'img_' + feeds[i].id) {
-                                return true;
-                            }
-                            return false;
+                            return item.id == 'img_' + feeds[i].id;
                         }), true);
 
                         if(found.length === 0){
-                            var newItem = {
-                                id: 'img_' + feeds[i]['id'],
-                                name: feeds[i]['from']['name'],
-                                message: feeds[i]['message'],
-                                icon: 'facebook',
-                                displayed: false
-                            };
-
-                            var fromPicture = 'http://graph.facebook.com/{from-id}/picture?type=large'.replace('{from-id}', feeds[i]['from']['id']);
-                            var fullPicture = feeds[i]['full_picture'];
-
-                            if (fullPicture) {
-                                newItem.picture = fullPicture;
-                                newItem.avatar = fromPicture;
-                            } else {
-                                newItem.picture = fromPicture;
-                            }
-
-                            var createdTime = new Date(feeds[i]['created_time']);
-                            var dateToDisplay = "";
-                            if (createdTime.toDateString() == new Date().toDateString()) {
-                                dateToDisplay = formatDateNumber(createdTime.getHours()) + ':' + formatDateNumber(createdTime.getMinutes()) + ' hs.';
-                            } else {
-                                dateToDisplay = formatDateNumber(createdTime.getDay()) + '/' + formatDateNumber(createdTime.getMonth()) + '/' + createdTime.getYear();
-                            }
-                            newItem.date = dateToDisplay;
-
-                            $scope.feeds.push(newItem);
+                            var currentIndex = i;
+                            addNewFeed(feeds[i]);
+                            getFeedPictures(i);
                         }
                     }
 
@@ -206,11 +237,17 @@ fancySocialDeckApp
         }
 
         function getNonDisplayedFeed() {
-            return  $filter('filter')($scope.feeds, {displayed: false}, true)[0];
+            var result =  $filter('filter')($scope.feeds, {displayed: false}, true)[0];
+            if(result && result.ready === true) {
+                $scope.lastExpand.setMilliseconds($scope.lastExpand.getMilliseconds() + delay);
+                return result;
+            } else {
+                return null;
+            }
         }
 
         function displayANewMessage(){
-            if($scope.nextAction === 'shrink' && new Date() - $scope.lastExpand < 10000) {
+            if($scope.nextAction === 'shrink' && new Date() - $scope.lastExpand < (delay * 0.9)) {
                 return;
             }
 
@@ -219,38 +256,48 @@ fancySocialDeckApp
                 var nextFeed = getNonDisplayedFeed();
 
                 if(!nextFeed) {
+                    var previousIndex = $scope.lastDispayedIndex;
                     $scope.lastDispayedIndex = $scope.lastDispayedIndex + 1;
 
                     if ($scope.lastDispayedIndex > $scope.feeds.length - 1) {
                         $scope.lastDispayedIndex = 0;
                     }
 
-                    nextFeed = $scope.feeds[$scope.lastDispayedIndex];
-                }
-                nextFeed.displayed = true;
-                $scope.feedToShrink = $scope.feeds.indexOf(nextFeed);
-
-                var found = $filter('filter')($scope.displayImages, {id: nextFeed.id}, true)[0];
-
-                if(!found) {
-                    var picture = new Image();
-                    picture.src = nextFeed.picture;
-
-                    picture.onload = function () {
-                        $scope.displayImages.push({
-                            id: nextFeed.id,
-                            url: picture.src
-                        });
-                        $scope.$apply();
-                        setTimeout(function(){
-                            $("#zoomwall img").removeAttr("style");
-                            zoomwall.create(document.getElementById('zoomwall'), true);
-                            expand(nextFeed);
-                        }, 500);
+                    if($scope.feeds[$scope.lastDispayedIndex].ready){
+                        nextFeed = $scope.feeds[$scope.lastDispayedIndex];
+                    } else {
+                        $scope.lastDispayedIndex = previousIndex;
                     }
-                } else {
-                    expand(nextFeed);
+
                 }
+
+                if(nextFeed){
+                    nextFeed.displayed = true;
+                    $scope.feedToShrink = $scope.feeds.indexOf(nextFeed);
+
+                    var found = $filter('filter')($scope.displayImages, {id: nextFeed.id}, true)[0];
+
+                    if(!found) {
+                        var picture = new Image();
+                        picture.src = nextFeed.picture;
+
+                        picture.onload = function () {
+                            $scope.displayImages.push({
+                                id: nextFeed.id,
+                                url: picture.src
+                            });
+                            $scope.$apply();
+                            setTimeout(function(){
+                                $("#zoomwall img").removeAttr("style");
+                                zoomwall.create(document.getElementById('zoomwall'), true);
+                                expand(nextFeed);
+                            }, 500);
+                        }
+                    } else {
+                        expand(nextFeed);
+                    }
+                }
+
             } else {
                 shrink();
             }
@@ -263,7 +310,7 @@ fancySocialDeckApp
 
             var refreshInterval = $interval(function(){
                 refreshFeed(displayANewMessage);
-            }, 8000);
+            }, delay);
 
             $scope.$on('$destroy', function() {
                 if (angular.isDefined(refreshInterval)) {
