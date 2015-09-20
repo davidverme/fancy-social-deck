@@ -79,7 +79,9 @@ fancySocialDeckApp
     })
 
     .controller('DeckCtrl', function ($scope, $state, $window, $filter, $interval, OpenFB) {
-        const delay = 2000;
+        const delay = 20000;
+        const limit = 30;
+
         OpenFB.get('/me', {fields: 'id,email,name,picture'})
             .success(function(data, status){
                 $scope.user = data;
@@ -131,35 +133,66 @@ fancySocialDeckApp
             $scope.feeds.push(newItem);
         }
 
+        function getPicture(i) {
+            $.ajax({
+                url: $scope.feeds[i]['picture'],
+                timeout:15000,
+                success: function() {
+                    console.log('Successfully downloaded picture: ' + $scope.feeds[i]['picture']);
+                    $scope.feeds[i].ready = true;
+                    console.log('Non Ready count: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
+                },
+                error: function(r,x) {
+                    console.log('Timeout downloading picture: ' + $scope.feeds[i]['picture']);
+                    console.log('Non Ready co<unt: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
+                    $scope.feeds[i]['picture'] = $scope.feeds[i]['initial_picture'];
+                    getPicture(i);
+                }
+            });
+        }
         function getFeedPictures(i){
             if($scope.feeds[i]['object_id']){
-                OpenFB.get('/{object-id}'.replace('{object-id}', $scope.feeds[i]['object_id']), {access_token: $scope.currentAccount.accessToken})
+                OpenFB.get('/{object-id}'.replace('{object-id}', $scope.feeds[i]['object_id']), {access_token: $scope.currentAccount.accessToken, fields: 'id,images'})
                     .success(function(data, status,headers){
 
-                        console.log(JSON.stringify(data['images'][0]));
+                        if(data['images']) {
+                            console.log(JSON.stringify(data['images'][0]));
+                            $scope.feeds[i]['initial_picture'] = data['picture'];
+                            $scope.feeds[i]['picture'] = data['images'][0]['source'];
+                        }
 
-                        $scope.feeds[i]['picture'] = data['images'][0]['source'];
-
-                        var picture = new Image();
-                        picture.src = $scope.feeds[i]['picture'];
-                        picture.onload = function(){
-                            $scope.feeds[i].ready = true;
-                        };
+                        getPicture(i);
                     });
             } else {
-                console.log($scope.feeds[i]['picture']);
-                var picture = new Image();
-                picture.src = $scope.feeds[i]['picture'];
-                picture.onload = function(){
-                    $scope.feeds[i].ready = true;
-                };
+                $scope.feeds[i]['initial_picture'] = $scope.feeds[i]['picture'];
+                getPicture(i);
+            }
+        }
+
+        function removeOldPictures(feeds) {
+            if ($scope.displayImages) {
+                for (var i=0; i<$scope.displayImages.length; i++) {
+                    var found =  $filter('filter')(feeds, (function(item){
+                        return 'img_' + item.id == $scope.displayImages[i].id;
+                    }), true);
+                    if (found.length === 0) {
+                        var feedInScope =  $filter('filter')($scope.feeds, (function(item){
+                            return item.id == $scope.displayImages[i].id;
+                        }), true)[0];
+                        feedInScope.deleted = true;
+                        console.log('Feed removed: ' + JSON.stringify(feedInScope));
+                        $scope.displayImages.splice(i, 1);
+                    }
+                }
             }
         }
 
         function loadFacebookFeeds(callback) {
-            OpenFB.get('/{account-id}/feed'.replace('{account-id}', $scope.currentAccount.id), {access_token: $scope.currentAccount.accessToken, fields: 'object_id,full_picture,message,from,created_time'})
+            OpenFB.get('/{account-id}/feed'.replace('{account-id}', $scope.currentAccount.id), {access_token: $scope.currentAccount.accessToken, fields: 'object_id,full_picture,message,from,created_time', limit: limit})
                 .success(function (data, status, headers) {
                     var feeds = $filter('orderBy')(data.data, "created_time", false);
+
+                    removeOldPictures(feeds);
 
                     for (var i = 0; i < feeds.length; i++) {
                         var found = $filter('filter')($scope.feeds, (function(item){
@@ -169,7 +202,10 @@ fancySocialDeckApp
                         if(found.length === 0){
                             var currentIndex = i;
                             addNewFeed(feeds[i]);
-                            getFeedPictures(i);
+                            var index = $scope.feeds.indexOf($filter('filter')($scope.feeds, (function(item){
+                                return item.id == 'img_' + feeds[i].id;
+                            }), true)[0]);
+                            getFeedPictures(index);
                         }
                     }
 
@@ -193,28 +229,26 @@ fancySocialDeckApp
         function expand(feed) {
             $scope.nextAction = 'shrink';
 
-            var picture = new Image();
+            var pictureStr = "";
             if(feed.avatar) {
-                picture.src = feed.avatar;
+                pictureStr = feed.avatar;
             } else {
-                picture.src = feed.picture;
+                pictureStr = feed.picture;
             }
 
-            picture.onload = function(){
-                $scope.currentAvatar = picture.src;
-                $scope.currentMessage = feed.message;
-                $scope.currentUser = feed.name;
-                $scope.icon = feed.icon;
-                $scope.$apply();
-                $('body').scrollTo('#'+feed.id, 1000, function(){
-                    zoomwall.expand($('#'+feed.id)[0]);
-                    if($('#message').css('display') === 'none') {
-                        $('#message').css('display', 'block').addClass('bounceInUp').one('webkitAnimationEnd mozAnimationEnd MSAnimationEnd oanimationend animationend', function(){
-                            $('#message').removeClass('bounceInUp');
-                        });
-                    }
-                });
-            };
+            $scope.currentAvatar = pictureStr;
+            $scope.currentMessage = feed.message;
+            $scope.currentUser = feed.name;
+            $scope.icon = feed.icon;
+            $scope.$apply();
+            $('body').scrollTo('#'+feed.id, 1000, function(){
+                zoomwall.expand($('#'+feed.id)[0]);
+                if($('#message').css('display') === 'none') {
+                    $('#message').css('display', 'block').addClass('bounceInUp').one('webkitAnimationEnd mozAnimationEnd MSAnimationEnd oanimationend animationend', function(){
+                        $('#message').removeClass('bounceInUp');
+                    });
+                }
+            });
         }
 
         function shrink() {
@@ -263,12 +297,19 @@ fancySocialDeckApp
                         $scope.lastDispayedIndex = 0;
                     }
 
+                    while ($scope.feeds[$scope.lastDispayedIndex].deleted) {
+                        $scope.lastDispayedIndex = $scope.lastDispayedIndex + 1;
+
+                        if ($scope.lastDispayedIndex > $scope.feeds.length - 1) {
+                            $scope.lastDispayedIndex = 0;
+                        }
+                    }
+
                     if($scope.feeds[$scope.lastDispayedIndex].ready){
                         nextFeed = $scope.feeds[$scope.lastDispayedIndex];
                     } else {
                         $scope.lastDispayedIndex = previousIndex;
                     }
-
                 }
 
                 if(nextFeed){
@@ -278,21 +319,15 @@ fancySocialDeckApp
                     var found = $filter('filter')($scope.displayImages, {id: nextFeed.id}, true)[0];
 
                     if(!found) {
-                        var picture = new Image();
-                        picture.src = nextFeed.picture;
-
-                        picture.onload = function () {
-                            $scope.displayImages.push({
-                                id: nextFeed.id,
-                                url: picture.src
-                            });
-                            $scope.$apply();
-                            setTimeout(function(){
-                                $("#zoomwall img").removeAttr("style");
-                                zoomwall.create(document.getElementById('zoomwall'), true);
-                                expand(nextFeed);
-                            }, 500);
-                        }
+                        $scope.displayImages.push({
+                            id: nextFeed.id,
+                            url: nextFeed.picture
+                        });
+                        setTimeout(function(){
+                            $("#zoomwall img").removeAttr("style");
+                            zoomwall.create(document.getElementById('zoomwall'), true);
+                            expand(nextFeed);
+                        }, 500);
                     } else {
                         expand(nextFeed);
                     }
