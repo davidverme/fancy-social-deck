@@ -114,3 +114,10 @@ div.speech-container {
 p.user {
     font-size: 1.3em;
 }
+
+div.preload {
+    position: fixed;
+    bottom: 5px;
+    right: 5px;
+    color: red;
+}

@@ -78,7 +78,7 @@ fancySocialDeckApp
         };
     })
 
-    .controller('DeckCtrl', function ($scope, $state, $window, $filter, $interval, OpenFB) {
+    .controller('DeckCtrl', function ($scope, $state, $window, $filter, $interval, $timeout, OpenFB) {
         const delay = 20000;
         const limit = 30;
 
@@ -133,39 +133,41 @@ fancySocialDeckApp
             $scope.feeds.push(newItem);
         }
 
-        function getPicture(i) {
+        function getPicture(i, callback) {
             $.ajax({
                 url: $scope.feeds[i]['picture'],
-                timeout:15000,
+                timeout:300000,
                 success: function() {
                     console.log('Successfully downloaded picture: ' + $scope.feeds[i]['picture']);
                     $scope.feeds[i].ready = true;
-                    console.log('Non Ready count: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
+
+                    callback();
                 },
                 error: function(r,x) {
                     console.log('Timeout downloading picture: ' + $scope.feeds[i]['picture']);
-                    console.log('Non Ready co<unt: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
+                    console.log('Non Ready count: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
                     $scope.feeds[i]['picture'] = $scope.feeds[i]['initial_picture'];
-                    getPicture(i);
+                    getPicture(i, callback);
                 }
             });
         }
-        function getFeedPictures(i){
+
+        function getFeedPictures(i, callback){
             if($scope.feeds[i]['object_id']){
                 OpenFB.get('/{object-id}'.replace('{object-id}', $scope.feeds[i]['object_id']), {access_token: $scope.currentAccount.accessToken, fields: 'id,images'})
                     .success(function(data, status,headers){
 
                         if(data['images']) {
                             console.log(JSON.stringify(data['images'][0]));
-                            $scope.feeds[i]['initial_picture'] = data['picture'];
+                            $scope.feeds[i]['initial_picture'] = $scope.feeds[i]['picture'];
                             $scope.feeds[i]['picture'] = data['images'][0]['source'];
                         }
 
-                        getPicture(i);
+                        getPicture(i, callback);
                     });
             } else {
                 $scope.feeds[i]['initial_picture'] = $scope.feeds[i]['picture'];
-                getPicture(i);
+                getPicture(i,callback);
             }
         }
 
@@ -188,9 +190,26 @@ fancySocialDeckApp
         }
 
         function loadFacebookFeeds(callback) {
+            var callbackInterval;
+
+            function finish() {
+                console.log('Finish preload');
+
+                if (angular.isDefined(callbackInterval)) {
+                    $interval.cancel(callbackInterval);
+                    callbackInterval = undefined;
+                }
+
+                $scope.preload ="";
+                callback();
+            }
+
             OpenFB.get('/{account-id}/feed'.replace('{account-id}', $scope.currentAccount.id), {access_token: $scope.currentAccount.accessToken, fields: 'object_id,full_picture,message,from,created_time', limit: limit})
                 .success(function (data, status, headers) {
                     var feeds = $filter('orderBy')(data.data, "created_time", false);
+                    var feedsCount = feeds.length;
+                    var loadedCount = 0;
+                    $scope.preload = "Loading " + loadedCount + "/" + feedsCount;
 
                     removeOldPictures(feeds);
 
@@ -205,11 +224,23 @@ fancySocialDeckApp
                             var index = $scope.feeds.indexOf($filter('filter')($scope.feeds, (function(item){
                                 return item.id == 'img_' + feeds[i].id;
                             }), true)[0]);
-                            getFeedPictures(index);
+                            getFeedPictures(index, function(){
+                                loadedCount ++;
+                                console.log('Non Ready count: ' + $filter('filter')($scope.feeds, {ready: false}, true).length);
+                            });
+                        } else {
+                            loadedCount ++;
                         }
                     }
 
-                    callback();
+
+                    callbackInterval = $interval(function() {
+                        console.log('Loaded ' + loadedCount + '/' + feedsCount);
+                        $scope.preload = "Loading " + loadedCount + "/" + feedsCount;
+                        if(loadedCount >= feedsCount){
+                            finish();
+                        }
+                    }, 1000)
                 });
         }
 
@@ -240,7 +271,7 @@ fancySocialDeckApp
             $scope.currentMessage = feed.message;
             $scope.currentUser = feed.name;
             $scope.icon = feed.icon;
-            $scope.$apply();
+
             $('body').scrollTo('#'+feed.id, 1000, function(){
                 zoomwall.expand($('#'+feed.id)[0]);
                 if($('#message').css('display') === 'none') {
@@ -264,7 +295,7 @@ fancySocialDeckApp
                         $scope.currentMessage = "";
                         $scope.currentUser = "";
                         $scope.icon = "";
-                        $scope.$apply();
+
                     });
                 }
             }
@@ -323,7 +354,7 @@ fancySocialDeckApp
                             id: nextFeed.id,
                             url: nextFeed.picture
                         });
-                        setTimeout(function(){
+                        $timeout(function(){
                             $("#zoomwall img").removeAttr("style");
                             zoomwall.create(document.getElementById('zoomwall'), true);
                             expand(nextFeed);
@@ -341,17 +372,45 @@ fancySocialDeckApp
         if(!$scope.currentAccount || typeof($scope.currentAccount) == 'undefined' || $scope.currentAccount == null) {
             $state.go('options');
         } else {
-            refreshFeed(displayANewMessage);
+            refreshFeed(function() {
 
-            var refreshInterval = $interval(function(){
-                refreshFeed(displayANewMessage);
-            }, delay);
+                var readyInterval;
+                function readyToStart() {
+                    if (angular.isDefined(readyInterval)) {
+                        $interval.cancel(readyInterval);
+                        readyInterval = undefined;
+                    }
 
-            $scope.$on('$destroy', function() {
-                if (angular.isDefined(refreshInterval)) {
-                    $interval.cancel(refreshInterval);
-                    refreshInterval = undefined;
+                    zoomwall.create(document.getElementById('zoomwall'), true);
+
+                    var refreshInterval = $interval(function(){
+                        refreshFeed(displayANewMessage);
+                    }, delay);
+
+                    $scope.$on('$destroy', function() {
+                        if (angular.isDefined(refreshInterval)) {
+                            $interval.cancel(refreshInterval);
+                            refreshInterval = undefined;
+                        }
+                    });
                 }
+
+                var i = 0;
+                readyInterval = $interval(function() {
+                    if($scope.feeds[i]) {
+                        $scope.displayImages.push({
+                            id: $scope.feeds[i].id,
+                            url: $scope.feeds[i].picture
+                        });
+
+                        i++;
+                        if(i >= $scope.feeds.length) {
+                            $timeout(function(){
+                                readyToStart();
+                            }, 5000);
+                        }
+                    }
+                }, 1000);
             });
         }
 
