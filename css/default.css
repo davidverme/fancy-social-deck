@@ -76,7 +76,7 @@ div.speech-container {
     vertical-align: top;
     position: relative;
     display: inline-block;
-    width: 30%;
+    width: 20%;
 }
 .avatar {
  vertical-align: top;
@@ -88,7 +88,7 @@ div.speech-container {
     position: relative;
     width: 60%;
     display: inline-block;
-    font-size: 2em;
+    font-size: 2.0em;
 }
 
 .message {
